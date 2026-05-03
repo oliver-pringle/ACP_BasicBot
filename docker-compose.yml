@@ -1,0 +1,39 @@
+services:
+  basicbot-api:
+    build:
+      context: ./BasicBot.Api
+    container_name: basicbot-api
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5000
+      - ConnectionStrings__Sqlite=Data Source=/data/basicbot.db;Cache=Shared
+      # Restrict the Host header allowlist to the docker-compose service name +
+      # localhost. If you publish ports or rename the service, update this list
+      # (or set AllowedHosts in your shell env before `docker compose up`).
+      - AllowedHosts=basicbot-api;localhost
+      # Optional shared secret. Set BASICBOT_API_KEY in your host shell (or in
+      # ./acp-v2/.env, which docker compose auto-loads at the project root via
+      # `--env-file`) to enable X-API-Key auth between the sidecar and the API.
+      - BASICBOT_API_KEY=${BASICBOT_API_KEY:-}
+    volumes:
+      # Bind-mount must be writable by UID 1654 (the .NET 10 `app` user). One-time
+      # setup on a fresh host: `mkdir -p data && sudo chown 1654:1654 data`.
+      - ./data:/data
+    networks: [basicbot]
+    # No ports published — only the sidecar talks to it.
+
+  basicbot-acp:
+    build:
+      context: ./acp-v2
+    container_name: basicbot-acp
+    restart: unless-stopped
+    depends_on: [basicbot-api]
+    env_file: ./acp-v2/.env
+    environment:
+      - BASICBOT_API_URL=http://basicbot-api:5000
+    networks: [basicbot]
+
+networks:
+  basicbot:
+    driver: bridge
