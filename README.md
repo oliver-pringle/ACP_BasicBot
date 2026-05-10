@@ -116,9 +116,9 @@ The boilerplate is hardened for the recommended deployment shape (private docker
    - The `/echo` endpoints in `Program.cs`
    - The `echo_records` table in `Db.cs` (`CREATE TABLE IF NOT EXISTS …`)
 5. Replace the TS offering:
-   - `acp-v2/src/offerings/echo.ts` → your real offering(s)
+   - `acp-v2/src/offerings/echo.ts` → your real offering(s). Every `Offering` carries `slaMinutes` (min 5), `requirementSchema`, `requirementExample`, `deliverableSchema`, and `deliverableExample` — fill all of them. Build the schemas from your C# response model; wire keys are camelCase (ASP.NET Core web defaults); any C# enum that flows straight into the response serialises as an integer unless you explicitly `.ToString()` it.
    - Update `registry.ts` and `pricing.ts`
-6. Run `npm run print-offerings` and register on app.virtuals.io.
+6. Run `npm run print-offerings` and register on app.virtuals.io. The output includes the SLA, requirement schema + example, and deliverable schema + example per offering for the marketplace registration form and buyer-facing docs.
 
 ## Useful companion tooling
 

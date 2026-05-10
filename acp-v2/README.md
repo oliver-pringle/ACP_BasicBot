@@ -24,7 +24,7 @@ Copy each block into app.virtuals.io → BasicBot agent → Offerings → New of
 ## Layout
 
 - `src/seller.ts` — entry point
-- `src/offerings/` — offering handlers (one stub: `echo`)
+- `src/offerings/` — offering handlers (one stub: `echo`). Every `Offering` carries `slaMinutes` (min 5), `requirementSchema`, `requirementExample`, `deliverableSchema`, and `deliverableExample` — `npm run print-offerings` emits all of them so a buyer can see the SLA, the request shape (with example), and the deliverable shape (with example) before hiring.
 - `src/pricing.ts` — USDC price table
 - `src/deliverable.ts` — inline vs URL deliverables (50 KB threshold)
 - `src/apiClient.ts` — typed HTTP client for the C# API

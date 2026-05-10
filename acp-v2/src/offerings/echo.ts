@@ -7,6 +7,7 @@ export const echo: Offering = {
   name: "echo",
   description:
     "Echo a message back. Demonstrates the BasicBot ACP boilerplate end-to-end (validate → price → call C# API → SQLite write → deliverable).",
+  slaMinutes: 5, // SQLite write only; sub-second — min SLA
   requirementSchema: {
     type: "object",
     properties: {
@@ -17,6 +18,23 @@ export const echo: Offering = {
       },
     },
     required: ["message"],
+  },
+  requirementExample: {
+    message: "hello world",
+  },
+  deliverableSchema: {
+    type: "object",
+    properties: {
+      id:         { type: "integer", description: "SQLite row id assigned to this echo." },
+      message:    { type: "string",  description: "The message echoed back, verbatim." },
+      receivedAt: { type: "string",  description: "ISO-8601 UTC timestamp the API recorded the message." },
+    },
+    required: ["id", "message", "receivedAt"],
+  },
+  deliverableExample: {
+    id: 42,
+    message: "hello world",
+    receivedAt: "2026-05-04T14:23:11.4127831Z",
   },
   validate(req) {
     return requireStringLength(req.message, "message", MAX_MESSAGE_LENGTH);
