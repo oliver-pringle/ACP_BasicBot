@@ -47,6 +47,7 @@ Smoke-test the API directly:
 curl http://localhost:5000/health
 curl -X POST http://localhost:5000/echo -H "Content-Type: application/json" -d '{"message":"hi"}'
 curl http://localhost:5000/echo/1
+curl http://localhost:5000/v1/resources/echoStatus
 ```
 
 ## Provisioning the agent
@@ -66,6 +67,15 @@ curl http://localhost:5000/echo/1
    npm run print-offerings
    ```
    Copy each printed block into **Offerings → New offering** in the dashboard.
+5. Register resources (optional but recommended — Butler-style buyer agents
+   call Resources before paying for an offering):
+   ```bash
+   cd acp-v2
+   npm run print-resources
+   ```
+   Copy each printed block into **Resources → New resource** in the dashboard.
+   The boilerplate ships with one example (`echoStatus`); add your own in
+   `acp-v2/src/resources.ts` and wire matching handlers in `BasicBot.Api/Program.cs`.
 
 ## Production (Linux / Docker)
 
@@ -92,13 +102,42 @@ The boilerplate is hardened for the recommended deployment shape (private docker
 
 | Concern | Default | When to change |
 |---|---|---|
-| **Auth between sidecar and API** | None — both containers on the private `basicbot` bridge with no published ports. | If you publish `basicbot-api` ports or split the containers across hosts: set `BASICBOT_API_KEY` in your shell env (or `acp-v2/.env`). The API enforces `X-API-Key` on every non-`/health` route, the sidecar forwards it. |
+| **Auth between sidecar and API** | None — both containers on the private `basicbot` bridge with no published ports. | If you publish `basicbot-api` ports or split the containers across hosts: set `BASICBOT_API_KEY` in your shell env (or `acp-v2/.env`). The API enforces `X-API-Key` on every route except `/health` and `/v1/resources/*` (Resources must stay public — that's their whole point). The sidecar forwards the key. |
 | **Request body size** | 256 KB cap on Kestrel; per-route message length capped at 10 000 chars. | Bump only if a real offering needs larger inputs. Mirror any change in `acp-v2/src/offerings/*.ts` so oversize is rejected before hitting the API. |
 | **Container user** | API runs as `app` (UID 1654, from `mcr.microsoft.com/dotnet/aspnet:10.0`). Sidecar runs as `node` (UID 1000). | Don't run as root. If your `./data` dir is owned by another UID, either `chown 1654:1654 data` or override with a docker-compose `user:` directive. |
 | **HTTPS** | Off inside the bridge. The API binds plain HTTP on port 5000 internally. | Always terminate TLS at a reverse proxy (Caddy / nginx / Traefik) before exposing publicly. Don't add `UseHttpsRedirection()` inside the API — it interferes with internal calls from the sidecar. |
 | **`AllowedHosts`** | `localhost` for `dotnet run`; `basicbot-api;localhost` inside docker compose. | If you rename the docker-compose service or publish behind a public hostname, update the `AllowedHosts` env var in `docker-compose.yml` to match. |
 | **Secrets** | `.env` file in `acp-v2/`. `.gitignore`d. | Acceptable for single-server deployments. For shared / multi-host or regulated environments, switch to a secret manager (AWS Secrets Manager, GCP Secret Manager, Vault, Doppler, 1Password Connect, etc.) and inject env vars at container start. |
 | **Base image pinning** | Major-tag pins (`node:22-slim`, `mcr.microsoft.com/dotnet/aspnet:10.0`). | For reproducible production builds, pin to digests (`@sha256:...`) and bump deliberately on a schedule. Trade-off: digest-pinned images don't pick up CVE patches automatically. |
+
+## Wallet delegation guard (EIP-7702)
+
+The sidecar runs a boot-time delegation check before accepting any hires. The
+ACP v2 SDK (`acp-node-v2 ^0.0.6`) only recognises wallets delegated to Alchemy
+ModularAccountV2 (`0x69007702764179f14F51cdce752f4f775d74E139`). Privy WaaS
+occasionally rotates a wallet to a different impl; when that happens, the next
+hire fails inside the SDK with `Expected bigint, got: N` from a HexBigInt
+typebox encoder that's been fed the wallet's raw integer nonce.
+
+`acp-v2/src/walletDelegation.ts` makes the sidecar self-defending against this:
+
+- **On every boot:** one `eth_getBytecode` call probes the wallet. If the
+  delegation prefix (`0xef0100…`) points at ModularAccountV2, the sidecar
+  carries on. If not, it either auto-recovers or refuses to start.
+- **Auto-recovery (recommended):** set `DEPLOYER_PRIVATE_KEY` in
+  `acp-v2/.env`. The guard signs a fresh 7702 authorization via Privy's
+  `signer.signAuthorization` and broadcasts a sponsored type-4 tx from the
+  deployer EOA. The deployer pays gas (~0.001 ETH per recovery, rare in
+  practice). No on-chain tx when delegation is already correct — idempotent.
+- **Without a deployer key:** the guard throws on drift with a recovery
+  message pointing at `scripts/provision-7702.ts` for a manual one-shot.
+
+`BASE_RPC_URL` in `acp-v2/.env` overrides the public RPC the probe uses
+(defaults to publicnode). Even a free RPC is fine — one call per boot.
+
+The guard is wired into `seller.ts` right after `AcpAgent.create(...)`. Do
+not remove it. The pattern is shared with ChainlinkBot, where it was
+battle-tested through the 2026-05-11 Base mainnet cutover.
 
 ## Cloning this boilerplate for a new bot
 
@@ -118,7 +157,10 @@ The boilerplate is hardened for the recommended deployment shape (private docker
 5. Replace the TS offering:
    - `acp-v2/src/offerings/echo.ts` → your real offering(s). Every `Offering` carries `slaMinutes` (min 5), `requirementSchema`, `requirementExample`, `deliverableSchema`, and `deliverableExample` — fill all of them. Build the schemas from your C# response model; wire keys are camelCase (ASP.NET Core web defaults); any C# enum that flows straight into the response serialises as an integer unless you explicitly `.ToString()` it.
    - Update `registry.ts` and `pricing.ts`
-6. Run `npm run print-offerings` and register on app.virtuals.io. The output includes the SLA, requirement schema + example, and deliverable schema + example per offering for the marketplace registration form and buyer-facing docs.
+6. Replace the TS resources (optional — delete the example if your bot won't expose any):
+   - `acp-v2/src/resources.ts` → your real resources. Resources are public, free, parameterised endpoints buyer / orchestrator agents (Butler etc.) call BEFORE paying for an offering. The example `echoStatus` shows the pattern: declare metadata here, wire the matching `/v1/resources/<name>` handler in `Program.cs`.
+   - The X-API-Key middleware in `Program.cs` already whitelists `/v1/resources/*` so resources stay reachable when auth is on.
+7. Run `npm run print-offerings` and register on app.virtuals.io. The output includes the SLA, requirement schema + example, and deliverable schema + example per offering for the marketplace registration form and buyer-facing docs. If you have resources, also run `npm run print-resources` and paste each block into the dashboard's Resources tab.
 
 ## Useful companion tooling
 
