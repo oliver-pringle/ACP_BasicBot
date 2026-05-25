@@ -32,14 +32,27 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-// Optional X-API-Key middleware. Off by default — boilerplate ships with both
-// containers on a private docker network with no published ports. If you expose
-// this API publicly, set BASICBOT_API_KEY (or ApiKey in configuration) and the
-// middleware below will require X-API-Key on every non-/health request.
+// X-API-Key middleware. Required in any non-Development environment — a fail-
+// open default plus a bad .env deploy or env-load failure would silently expose
+// every endpoint. In Development the bot is still allowed to start without a
+// key, with a loud warning, so local clones don't need configuration to boot.
 var apiKey = builder.Configuration["ApiKey"]
     ?? Environment.GetEnvironmentVariable("BASICBOT_API_KEY");
 
-if (!string.IsNullOrEmpty(apiKey))
+if (string.IsNullOrEmpty(apiKey))
+{
+    if (!app.Environment.IsDevelopment())
+    {
+        throw new InvalidOperationException(
+            "BASICBOT_API_KEY is required in non-Development environments. " +
+            $"Current environment: {app.Environment.EnvironmentName}. Set the env var " +
+            "(or `ApiKey` in configuration) to a high-entropy random string.");
+    }
+    app.Logger.LogWarning(
+        "BASICBOT_API_KEY not set — Development mode only. " +
+        "Endpoints accept all callers. Set the env var before any non-local deployment.");
+}
+else
 {
     var expectedBytes = Encoding.UTF8.GetBytes(apiKey);
     app.Use(async (ctx, next) =>
@@ -70,13 +83,6 @@ if (!string.IsNullOrEmpty(apiKey))
         await next();
     });
     app.Logger.LogInformation("X-API-Key middleware enabled.");
-}
-else
-{
-    app.Logger.LogWarning(
-        "BASICBOT_API_KEY not set — endpoints accept all callers. " +
-        "This is the boilerplate default and is safe ONLY when the API stays on a private docker network. " +
-        "Set BASICBOT_API_KEY to require X-API-Key on every non-/health route.");
 }
 
 app.MapGet("/health", () => Results.Ok(new

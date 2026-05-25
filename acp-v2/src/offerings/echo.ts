@@ -6,8 +6,8 @@ const MAX_MESSAGE_LENGTH = 10_000;
 export const echo: Offering = {
   name: "echo",
   description:
-    "Echo a message back. Demonstrates the BasicBot ACP boilerplate end-to-end (validate → price → call C# API → SQLite write → deliverable).",
-  slaMinutes: 5, // SQLite write only; sub-second — min SLA
+    "Echo a message back. Demonstrates the BasicBot ACP boilerplate end-to-end (validate -> price -> call C# API -> SQLite write -> deliverable).",
+  slaMinutes: 5, // SQLite write only; sub-second  -  min SLA
   requirementSchema: {
     type: "object",
     properties: {

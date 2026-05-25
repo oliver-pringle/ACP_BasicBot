@@ -1,4 +1,4 @@
-// ACP v2 Resources — public, free, parameterised endpoints that buyer /
+// ACP v2 Resources  -  public, free, parameterised endpoints that buyer /
 // orchestrator agents (e.g. Butler) call BEFORE paying for an offering.
 //
 // Resources are first-class in @virtuals-protocol/acp-node-v2 ^0.0.6 as
@@ -11,11 +11,11 @@
 //
 // Default registry is empty so new clones don't ship the stub. Add entries
 // when you wire actual handlers in Program.cs. The `echoStatus` example
-// below is commented in BasicBot.Api/Program.cs — uncomment in
+// below is commented in BasicBot.Api/Program.cs  -  uncomment in
 // resources.ts AND Program.cs together to enable.
 
 export interface Resource {
-  /// Resource name, ≤30 chars, camelCase. Marketplace UI takes this verbatim.
+  /// Resource name, <=30 chars, camelCase. Marketplace UI takes this verbatim.
   name: string;
   /// Path on the bot's public API where the handler lives.
   /// e.g. "/v1/resources/echoStatus". This is what buyer agents call.
@@ -29,7 +29,7 @@ export interface Resource {
 }
 
 export const RESOURCES: Record<string, Resource> = {
-  // Sample resource — pre-wired with a matching handler in Program.cs and
+  // Sample resource  -  pre-wired with a matching handler in Program.cs and
   // a backing GetStatusAsync in EchoRepository. Demonstrates the C#-side
   // pattern (read SQLite, return JSON). Delete or replace when cloning.
   echoStatus: {
