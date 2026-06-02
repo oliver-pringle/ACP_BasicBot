@@ -44,8 +44,12 @@ export function createApiClient(
         headers,
       });
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`basicbot-api ${res.status}: ${text}`);
+        // P63: log the upstream status + body server-side (it can carry the
+        // keyed BASE_RPC_URL / internal route detail), but throw an OPAQUE
+        // error so router.ts / seller.ts never relay it to a paying buyer.
+        const method = init?.method ?? "GET";
+        console.error(`[apiClient] ${method} ${path} -> ${res.status}: ${await res.text()}`);
+        throw new Error(`upstream error (status ${res.status}) [${method} ${path}]`);
       }
       return (await res.json()) as T;
     } finally {
