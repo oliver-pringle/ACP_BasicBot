@@ -19,6 +19,9 @@ const long MaxRequestBodyBytes = 256L * 1024L;
 builder.Services.Configure<KestrelServerOptions>(options =>
 {
     options.Limits.MaxRequestBodySize = MaxRequestBodyBytes;
+    // Strip the "Server: Kestrel" banner (P43) so responses don't disclose the
+    // framework. Lift this line into every portfolio bot.
+    options.AddServerHeader = false;
 });
 
 var app = builder.Build();
@@ -31,6 +34,27 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+// Security headers (P31). Defence-in-depth at the app layer for when Caddy
+// terminates TLS but doesn't emit these. JSON-only API, so CSP `default-src
+// 'none'; frame-ancestors 'none'` is correct for any non-HTML response.
+// HSTS is intentionally NOT set here — Caddy emits it at the TLS edge and the
+// bot listens HTTP-only on the docker bridge, so app-layer HSTS would be a no-op.
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.OnStarting(() =>
+    {
+        var p = ctx.Request.Path.Value ?? string.Empty;
+        ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        ctx.Response.Headers["Referrer-Policy"]        = "no-referrer";
+        ctx.Response.Headers["X-Frame-Options"]        = "DENY";
+        ctx.Response.Headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
+        if (!p.StartsWith("/v1/resources/", StringComparison.Ordinal) && p != "/health")
+            ctx.Response.Headers["Cache-Control"] = "no-store";
+        return Task.CompletedTask;
+    });
+    await next();
+});
 
 // X-API-Key middleware. Required in any non-Development environment — a fail-
 // open default plus a bad .env deploy or env-load failure would silently expose
