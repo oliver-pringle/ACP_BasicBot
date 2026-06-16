@@ -128,9 +128,15 @@ async function main() {
   }
 
   async function handleJobFunded(session: JobSession) {
-    const stash = pending.get(session.jobId);
+    let stash = pending.get(session.jobId);
+    // Restart-safe recovery: the in-memory `pending` map is lost across a sidecar
+    // restart (deploy / OOM / crash) between the requirement and job.funded events,
+    // which would otherwise strand a FUNDED job forever — it is never submitted, so
+    // it sits OPEN until it expires with the buyer's escrow locked the whole time.
+    // Re-derive from the job itself (the requirement + offering name are on-chain).
+    if (!stash) stash = await recoverPendingFromJob(session);
     if (!stash) {
-      console.warn(`[seller] job.funded without stashed requirement, jobId=${session.jobId}`);
+      console.warn(`[seller] job.funded without recoverable requirement, jobId=${session.jobId}`);
       return;
     }
     const outcome = await route(stash.offeringName, stash.requirement, { client });
@@ -141,6 +147,29 @@ async function main() {
     const payload = await toDeliverable(session.jobId, outcome.result);
     await session.submit(payload);
     console.log(`[seller] submitted jobId=${session.jobId} offering=${stash.offeringName}`);
+  }
+
+  // Reconstruct a PendingJob from the on-chain job when the in-memory stash is gone
+  // (the sidecar restarted between the requirement and job.funded). Returns undefined
+  // if the job / requirement can't be recovered or doesn't validate, in which case the
+  // caller falls through to the same warn+return as before — strictly additive, so a
+  // restart can now only do BETTER than the previous dead-end, never worse.
+  async function recoverPendingFromJob(session: JobSession): Promise<PendingJob | undefined> {
+    try {
+      const job = session.job ?? (await session.fetchJob());
+      const offeringName = job.description;
+      const offering = getOffering(offeringName);
+      if (!offering) return undefined;
+      const raw = (job as { requirements?: unknown }).requirements;
+      const requirement: Record<string, unknown> =
+        typeof raw === "string" ? JSON.parse(raw) : ((raw as Record<string, unknown> | undefined) ?? {});
+      if (!offering.validate(requirement).valid) return undefined;
+      console.log(`[seller] recovered requirement for funded job ${session.jobId} after stash loss (offering=${offeringName})`);
+      return { offeringName, requirement };
+    } catch (err) {
+      console.error(`[seller] requirement recovery failed for job ${session.jobId}:`, err);
+      return undefined;
+    }
   }
 
   await agent.start();
