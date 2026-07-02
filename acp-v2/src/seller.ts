@@ -6,6 +6,7 @@ import { createApiClient } from "./apiClient.js";
 import { route } from "./router.js";
 import { priceForAssetToken } from "./pricing.js";
 import { toDeliverable } from "./deliverable.js";
+import { withApprovalNudge } from "./approvalNudge.js";
 import { listOfferings, getOffering } from "./offerings/registry.js";
 import { listResources } from "./resources.js";
 import { ensureDelegation } from "./walletDelegation.js";
@@ -101,13 +102,17 @@ async function main() {
     // Refuse jobs with a non-zero evaluator. With a buyer-controlled evaluator,
     // the buyer can take our deliverable and then reject() to deny payment.
     // Insisting on the zero-address evaluator means submission auto-completes
-    // on-chain.
-    const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-    if (job.evaluatorAddress.toLowerCase() !== ZERO_ADDRESS) {
-      await session.sendMessage(
-        `unsupported: this seller only accepts jobs with evaluatorAddress=${ZERO_ADDRESS}. Got: ${job.evaluatorAddress}`
-      );
-      return;
+    // on-chain. Set ALLOW_NONZERO_EVALUATOR=true to accept buyer-as-evaluator
+    // jobs (the deliverable then carries an evaluatorApprovalNotice nudge).
+    const ALLOW_NONZERO_EVALUATOR = process.env.ALLOW_NONZERO_EVALUATOR === "true";
+    if (!ALLOW_NONZERO_EVALUATOR) {
+      const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+      if (job.evaluatorAddress.toLowerCase() !== ZERO_ADDRESS) {
+        await session.sendMessage(
+          `unsupported: this seller only accepts jobs with evaluatorAddress=${ZERO_ADDRESS}. Got: ${job.evaluatorAddress}`
+        );
+        return;
+      }
     }
 
     const offering = getOffering(offeringName);
@@ -144,7 +149,7 @@ async function main() {
       await session.sendMessage(`execution failed: ${outcome.reason}`);
       return;
     }
-    const payload = await toDeliverable(session.jobId, outcome.result);
+    const payload = await toDeliverable(session.jobId, await withApprovalNudge(session, outcome.result));
     await session.submit(payload);
     console.log(`[seller] submitted jobId=${session.jobId} offering=${stash.offeringName}`);
   }

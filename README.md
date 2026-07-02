@@ -109,6 +109,7 @@ The boilerplate is hardened for the recommended deployment shape (private docker
 | **`AllowedHosts`** | `localhost` for `dotnet run`; `basicbot-api;localhost` inside docker compose. | If you rename the docker-compose service or publish behind a public hostname, update the `AllowedHosts` env var in `docker-compose.yml` to match. |
 | **Secrets** | `.env` file in `acp-v2/`. `.gitignore`d. | Acceptable for single-server deployments. For shared / multi-host or regulated environments, switch to a secret manager (AWS Secrets Manager, GCP Secret Manager, Vault, Doppler, 1Password Connect, etc.) and inject env vars at container start. |
 | **Base image pinning** | Major-tag pins (`node:22-slim`, `mcr.microsoft.com/dotnet/aspnet:10.0`). | For reproducible production builds, pin to digests (`@sha256:...`) and bump deliberately on a schedule. Trade-off: digest-pinned images don't pick up CVE patches automatically. |
+| **`ALLOW_NONZERO_EVALUATOR`** | Unset — jobs with a non-zero evaluator are REJECTED (a buyer-controlled evaluator can take the deliverable and then `reject()` to deny payment; the zero-address evaluator makes submission auto-complete on-chain). | Set `ALLOW_NONZERO_EVALUATOR=true` in `acp-v2/.env` to accept buyer-as-evaluator jobs. The deliverable then carries an `evaluatorApprovalNotice` nudge prompting the evaluator to approve before the job expires. |
 
 ## Wallet delegation guard (EIP-7702)
 
