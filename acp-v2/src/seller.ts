@@ -11,6 +11,7 @@ import { listOfferings, getOffering } from "./offerings/registry.js";
 import { listResources } from "./resources.js";
 import { ensureDelegation } from "./walletDelegation.js";
 import { getChain } from "./chain.js";
+import { startLivenessRecycle } from "./liveness.js";
 
 type PendingJob = {
   offeringName: string;
@@ -48,7 +49,12 @@ async function main() {
   // the SDK session object. Cleared on terminal events.
   const pending = new Map<string, PendingJob>();
 
+  // Deafness guard: planned periodic self-recycle (see liveness.ts for the
+  // silent-socket-death failure mode this defends against).
+  const liveness = startLivenessRecycle();
+
   agent.on("entry", async (session: JobSession, entry: JobRoomEntry) => {
+    liveness.noteActivity();
     try {
       if (entry.kind === "system") {
         switch (entry.event.type) {
